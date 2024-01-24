@@ -88,5 +88,9 @@ for b in range(batch_size): # batch dimension
         print(f"When input is {context.tolist()}, the target is: {target}")
 
 model = BigramLanguageModel(vocabulary_size)
-outputs = model(xb, yb)
-print(outputs.shape)
+logits, loss = model(xb, yb)
+print(logits.shape)
+print(loss)
+
+# As of now, the entire context is not being used, only the last character is used to make a prediction.
+print(decode(model.generate(idx = torch.zeros((1,1),dtype=torch.long), max_new_tokens=100)[0].tolist()))
