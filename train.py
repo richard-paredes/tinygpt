@@ -94,3 +94,22 @@ print(loss)
 
 # As of now, the entire context is not being used, only the last character is used to make a prediction.
 print(decode(model.generate(idx = torch.zeros((1,1),dtype=torch.long), max_new_tokens=100)[0].tolist()))
+
+# Create PyTorch optimizer
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+
+# Train the model!!
+batch_size = 32
+for steps in range(10000):
+    # Sample
+    xb, yb = get_batch('train')
+
+    # Evaluate loss
+    logits, loss = model(xb, yb)
+    optimizer.zero_grad(set_to_none=True) # Zero out gradients from previous step
+    loss.backward() # Getting gradients for all parameters
+    optimizer.step() # Uses gradients to update the parameters
+
+print (loss.item())
+
+print(decode(model.generate(idx = torch.zeros((1,1),dtype=torch.long), max_new_tokens=300)[0].tolist()))
