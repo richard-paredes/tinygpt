@@ -1,16 +1,18 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+import hyperparameters
 
 class Head(nn.Module):
     """ one head of self-attention """
 
-    def __init__(self, head_size: int, n_embed: int, block_size: int):
+    def __init__(self, head_size: int):
         super().__init__()
-        self.key = nn.Linear(n_embed, head_size, bias=False)
-        self.query = nn.Linear(n_embed, head_size, bias=False)
-        self.value = nn.Linear(n_embed, head_size, bias=False)
-        self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size)))
+        self.key = nn.Linear(hyperparameters.NUM_EMBEDDING_DIMENSIONS, head_size, bias=False)
+        self.query = nn.Linear(hyperparameters.NUM_EMBEDDING_DIMENSIONS, head_size, bias=False)
+        self.value = nn.Linear(hyperparameters.NUM_EMBEDDING_DIMENSIONS, head_size, bias=False)
+        self.register_buffer('tril', torch.tril(torch.ones(hyperparameters.BLOCK_SIZE, hyperparameters.BLOCK_SIZE)))
+        self.dropout = nn.Dropout(hyperparameters.DROPOUT)
     
     def forward(self, x):
         B,T,C = x.shape

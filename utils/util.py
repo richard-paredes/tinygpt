@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+import hyperparameters
+
 
 def read_file(filename: str):
     with open(filename, 'r', encoding='utf-8') as f:
@@ -29,37 +31,30 @@ def split_data(encoder, dataset: str):
 
 def get_batch(training_data: torch.Tensor, 
               validation_data: torch.Tensor, 
-              block_size: int, 
-              batch_size: int, 
-              split: str,
-              device: str):
+              split: str):
     # We generate a small batch of data of inputs X and targets Y
     data = training_data if split == 'train' else validation_data
     # This will get random offsets within the training set
-    ix = torch.randint(len(data) - block_size, (batch_size,))
+    ix = torch.randint(len(data) - hyperparameters.BLOCK_SIZE, (hyperparameters.BATCH_SIZE,))
 
     # Torch.stack will stack the 1-dimensional tensors of tokens as rows in a 4x8 tensor
-    x = torch.stack([data[i:i+block_size] for i in ix])
-    y = torch.stack([data[i+1:i+block_size+1] for i in ix])
-    x, y = x.to(device), y.to(device)
+    x = torch.stack([data[i:i+hyperparameters.BLOCK_SIZE] for i in ix])
+    y = torch.stack([data[i+1:i+hyperparameters.BLOCK_SIZE+1] for i in ix])
+    x, y = x.to(hyperparameters.DEVICE), y.to(hyperparameters.DEVICE)
     # The result is 32 independent samples packed into a single batch, within X and the corresponding outputs in Y
     return x, y
 
 # Best practice: Indicate to PyTorch when we will not execute back-propagation
 @torch.no_grad() # What this means: Everything that happens inside this function, we will not call .backward() on (means more memory efficient as no intermediate vars are stored)
 def estimate_loss(model: nn.Module, 
-                device: str,
                 training_data: torch.Tensor, 
-                validation_data: torch.Tensor, 
-                block_size: int,
-                batch_size: int, 
-                eval_iters: int):
+                validation_data: torch.Tensor):
     out = {}
     model.eval()
     for split in ['train', 'val']:
-        losses = torch.zeros(eval_iters)
-        for k in range(eval_iters):
-            X, Y = get_batch(training_data, validation_data, block_size, batch_size, split, device)
+        losses = torch.zeros(hyperparameters.EVALUATION_ITERATIONS)
+        for k in range(hyperparameters.EVALUATION_ITERATIONS):
+            X, Y = get_batch(training_data, validation_data, split)
             logits, loss = model(X,Y)
             losses[k] = loss.item()
         out[split] = losses.mean()
@@ -70,22 +65,16 @@ def create_optimizer(model: nn.Module, learning_rate: int):
     return torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
 def train(model: nn.Module, 
-          device: str,
           optimizer: torch.optim.Optimizer,
           training_data: torch.Tensor, 
-          validation_data: torch.Tensor, 
-          block_size: int,
-          batch_size: int,
-          max_iters: int, 
-          eval_iters: int,
-          eval_interval: int):
-    for iter in range(max_iters):
-        if iter % eval_interval == 0:
-            losses = estimate_loss(model, device, training_data, validation_data, block_size, batch_size, eval_iters)
+          validation_data: torch.Tensor):
+    for iter in range(hyperparameters.MAX_ITERATIONS):
+        if iter % hyperparameters.EVALUATION_INTERVAL == 0:
+            losses = estimate_loss(model, training_data, validation_data)
             print(f"Step: {iter}: training loss - {losses['train']:.4f}, validation loss - {losses['val']:.4f}")
     
     # Sample
-    xb, yb = get_batch(training_data, validation_data, block_size, batch_size, 'train', device)
+    xb, yb = get_batch(training_data, validation_data,'train')
 
     # Eval loss
     logits, loss = model(xb, yb)
@@ -95,7 +84,10 @@ def train(model: nn.Module,
 
 def evaluate_model(device: str, model: nn.Module, max_new_tokens: int, decoder):
     context = torch.zeros((1,1), dtype=torch.long, device=device)
-    print(decoder(model.generate(context, max_new_tokens=max_new_tokens)[0].tolist()))
+    print(f'ContexT: {context.shape}')
+    val = model.generate(context, max_new_tokens=max_new_tokens)[0].tolist()
+    print(f'Val: {val}')
+    print(decoder(val))
 
 # Inefficient because we are doing nest loops. We can instead perform the same logic using matrix multiplication
 def self_attention_inefficient(B:int, T:int, C:int):

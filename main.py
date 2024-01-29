@@ -24,11 +24,11 @@ def execute_training():
     encoder = create_encoder(distinct_chars)
     decoder = create_decoder(distinct_chars)
     train_data, val_data = split_data(encoder, text)
-    model = BigramLanguageModel(vocab_size, DEVICE, BATCH_SIZE, BLOCK_SIZE)
+    model = BigramLanguageModel(vocab_size)
     model = model.to(DEVICE)
     optimizer = create_optimizer(model, LEARNING_RATE)
     print('Training')
-    train(model, DEVICE, optimizer, train_data, val_data, BLOCK_SIZE, BATCH_SIZE, MAX_ITERATIONS, EVALUATION_ITERATIONS, EVALUATION_INTERVAL)
+    train(model, optimizer, train_data, val_data)
     print('Evaluating')
     evaluate_model(DEVICE, model, MAX_NEW_TOKENS, decoder)
 
