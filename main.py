@@ -1,19 +1,10 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-from models.BigramLanguageModel import BigramLanguageModel
-from utils.util import read_file, get_distinct_chars, create_encoder, create_decoder, split_data, create_optimizer, train, evaluate_model, self_attention_inefficient, trivial_matrix_multiplication_example
 
-# --- begin Hyperparameters
-BATCH_SIZE = 32
-BLOCK_SIZE = 8
-MAX_ITERATIONS = 5000
-EVALUATION_ITERATIONS = 500
-EVALUATION_INTERVAL = 200
-LEARNING_RATE = 1e-3
-DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-MAX_NEW_TOKENS = 500
-# --- end Hyperparameters
+import hyperparameters
+from models.BigramLanguageModel import BigramLanguageModel
+from utils.util import read_file, get_distinct_chars, create_encoder, create_decoder, split_data, create_optimizer, train, evaluate_model, self_attention_inefficient
 
 torch.manual_seed(1337)
 
@@ -25,12 +16,12 @@ def execute_training():
     decoder = create_decoder(distinct_chars)
     train_data, val_data = split_data(encoder, text)
     model = BigramLanguageModel(vocab_size)
-    model = model.to(DEVICE)
-    optimizer = create_optimizer(model, LEARNING_RATE)
+    model = model.to(hyperparameters.DEVICE)
+    optimizer = create_optimizer(model, hyperparameters.LEARNING_RATE)
     print('Training')
     train(model, optimizer, train_data, val_data)
     print('Evaluating')
-    evaluate_model(DEVICE, model, MAX_NEW_TOKENS, decoder)
+    evaluate_model(hyperparameters.DEVICE, model, hyperparameters.MAX_NEW_TOKENS, decoder)
 
 
 def execute_self_attention():

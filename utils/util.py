@@ -69,25 +69,33 @@ def train(model: nn.Module,
           training_data: torch.Tensor, 
           validation_data: torch.Tensor):
     for iter in range(hyperparameters.MAX_ITERATIONS):
-        if iter % hyperparameters.EVALUATION_INTERVAL == 0:
-            losses = estimate_loss(model, training_data, validation_data)
-            print(f"Step: {iter}: training loss - {losses['train']:.4f}, validation loss - {losses['val']:.4f}")
-    
-    # Sample
-    xb, yb = get_batch(training_data, validation_data,'train')
 
-    # Eval loss
-    logits, loss = model(xb, yb)
-    optimizer.zero_grad(set_to_none=True)
-    loss.backward()
-    optimizer.step()
+        # every once in a while evaluate the loss on train and val sets
+        if iter % hyperparameters.EVALUATION_INTERVAL == 0 or iter == hyperparameters.MAX_ITERATIONS - 1:
+            losses = estimate_loss(model,training_data,validation_data)
+            print(f"step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
+
+        # sample a batch of data
+        xb, yb = get_batch(training_data, validation_data, 'train')
+
+        # evaluate the loss
+        logits, loss = model(xb, yb)
+        optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        optimizer.step()
+        
+        # Sample
+        xb, yb = get_batch(training_data, validation_data,'train')
+
+        # Eval loss
+        logits, loss = model(xb, yb)
+        optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        optimizer.step()
 
 def evaluate_model(device: str, model: nn.Module, max_new_tokens: int, decoder):
-    context = torch.zeros((1,1), dtype=torch.long, device=device)
-    print(f'ContexT: {context.shape}')
-    val = model.generate(context, max_new_tokens=max_new_tokens)[0].tolist()
-    print(f'Val: {val}')
-    print(decoder(val))
+    context = torch.zeros((1, 1), dtype=torch.long, device=device)
+    print(decoder(model.generate(context, max_new_tokens=max_new_tokens)[0].tolist()))
 
 # Inefficient because we are doing nest loops. We can instead perform the same logic using matrix multiplication
 def self_attention_inefficient(B:int, T:int, C:int):

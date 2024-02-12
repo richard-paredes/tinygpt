@@ -11,67 +11,60 @@ from .Head import Head
 class BigramLanguageModel(nn.Module):
 
     def __init__(self, vocab_size: int):
-
         super().__init__()
-        # Tokens read directly off logits for the next token from a lookup table
-        # nn.Embedding is almost like a wrapper around a tensor that has the shape of vocab_size^2
-
+        # each token directly reads off the logits for the next token from a lookup table
         self.token_embedding_table = nn.Embedding(vocab_size, hyperparameters.NUM_EMBEDDING_DIMENSIONS)
-        # we want to encode the identity as well as the position of these tokens
         self.position_embedding_table = nn.Embedding(hyperparameters.BLOCK_SIZE, hyperparameters.NUM_EMBEDDING_DIMENSIONS)
+        self.blocks = nn.Sequential(*[Block(hyperparameters.NUM_EMBEDDING_DIMENSIONS, n_head=hyperparameters.NUM_HEADS) for _ in range(hyperparameters.NUM_LAYERS)])
+        self.ln_f = nn.LayerNorm(hyperparameters.NUM_EMBEDDING_DIMENSIONS) # final layer norm
+        self.lm_head = nn.Linear(hyperparameters.NUM_EMBEDDING_DIMENSIONS, vocab_size)
 
+        # better init, not covered in the original GPT video, but important, will cover in followup video
+        self.apply(self._init_weights)
 
-        # self.self_attention_head = Head(head_size=num_embedding_dimensions,n_embed=num_embedding_dimensions,block_size=block_size)
-        # self.self_attention_heads = MultiHeadAttention(4, num_embedding_dimensions//4, num_embedding_dimensions, block_size) # i.e. 4 heads of 8-dimensional self-attention
-        # self.feedforward = FeedForward(num_embedding_dimensions)
-
-        self.blocks = nn.Sequential(*[Block(hyperparameters.NUM_EMBEDDING_DIMENSIONS, hyperparameters.NUM_HEADS) for _ in range(hyperparameters.NUM_LAYERS)])
-        self.ln_f = nn.LayerNorm(hyperparameters.NUM_EMBEDDING_DIMENSIONS)
-
-        self.lang_modelling_head = nn.Linear(hyperparameters.NUM_EMBEDDING_DIMENSIONS, vocab_size)
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
     
-    def forward(self, idx: torch.Tensor, targets=torch.Tensor):
+    def forward(self, idx, targets=None):
         B, T = idx.shape
 
-        # Index and targets are both (Batch,Time) tensor of integers
-        token_embedding = self.token_embedding_table(idx) # (Batch,Time,Channel) tensor
-        # Batch = block_size (4), Time = 8, C = vocab_size (65)
-        # logits = scores for next character in the sequence
-        positional_embedding = self.position_embedding_table(torch.arange(T, device=hyperparameters.DEVICE)) # (T,C)
-        x = token_embedding + positional_embedding # (B, T, C)
-        # x = self.self_attention_head(x)
-        # x = self.self_attention_heads(x)
-        # x = self.feedforward(x)
-        x = self.blocks(x)
-        x = self.ln_f(x)
-        logits = self.lang_modelling_head(x) # (B,T,vocab_size)
-        # We now want to evaluate a loss function.
-        # A good way to measure loss (i.e. the quality of predictions) is to use the negative-log likelihood loss
-        # cross_entry expects B, C, T instead of B,T,C
+        # idx and targets are both (B,T) tensor of integers
+        tok_emb = self.token_embedding_table(idx) # (B,T,C)
+        pos_emb = self.position_embedding_table(torch.arange(T, device=hyperparameters.DEVICE)) # (T,C)
+        x = tok_emb + pos_emb # (B,T,C)
+        x = self.blocks(x) # (B,T,C)
+        x = self.ln_f(x) # (B,T,C)
+        logits = self.lm_head(x) # (B,T,vocab_size)
+
         if targets is None:
             loss = None
         else:
-            batch, time, channel = logits.shape
-            logits = logits.view(batch*time, channel) # stretch out the array to be 2-dimensions
-            targets = targets.view(batch*time)
-            loss = F.cross_entropy(logits, targets) # Expect: -ln(1/vocab_size)
+            B, T, C = logits.shape
+            logits = logits.view(B*T, C)
+            targets = targets.view(B*T)
+            loss = F.cross_entropy(logits, targets)
 
         return logits, loss
 
     # Takes in a (B,T) and generates a (B,T+1), (B,T+2), ... (B,T+max_new_tokens)
-    def generate(self, idx: torch.Tensor, max_new_tokens: int):
-
-        # Idx is the (B,T) array of indices in the current context
+    def generate(self, idx, max_new_tokens):
+        # idx is (B, T) array of indices in the current context
         for _ in range(max_new_tokens):
-            cropped_context = idx[:,-hyperparameters.BLOCK_SIZE:]
-            # Get predictions
-            logits, loss = self(cropped_context)
-            # Focus on the last time step
-            logits = logits[:, -1, :] # Becomes (B,C)
-            # Apply softmax to get the probabilities
-            probabilities = F.softmax(logits, dim=-1) # (B,C)
-            # Sample from the distribution
-            idx_next = torch.multinomial(probabilities, num_samples=1) # (B,1)
-            # Append sampled index to the running sequence
+            # crop idx to the last block_size tokens
+            idx_cond = idx[:, -hyperparameters.BLOCK_SIZE:]
+            # get the predictions
+            logits, loss = self(idx_cond)
+            # focus only on the last time step
+            logits = logits[:, -1, :] # becomes (B, C)
+            # apply softmax to get probabilities
+            probs = F.softmax(logits, dim=-1) # (B, C)
+            # sample from the distribution
+            idx_next = torch.multinomial(probs, num_samples=1) # (B, 1)
+            # append sampled index to the running sequence
             idx = torch.cat((idx, idx_next), dim=1) # (B, T+1)
         return idx
